@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stats">
+  <div class="stat"><div class="label">Content types</div><div class="value">3</div></div>
+  <div class="stat"><div class="label">Default box size</div><div class="value">{{ box_size }}</div></div>
+  <div class="stat"><div class="label">Default border</div><div class="value">{{ border }}</div></div>
+  <div class="stat"><div class="label">Error correction</div><div class="value">M</div></div>
+</div>
+
+<div class="card">
+  <h2>Generate a QR code</h2>
+  <form method="post" action="{{ url_for('generate') }}" id="qr-form">
+    <div class="field">
+      <label for="kind">What to encode</label>
+      <select id="kind" name="kind">
+        <option value="text">Text</option>
+        <option value="url">URL</option>
+        <option value="vcard">Contact (vCard)</option>
+      </select>
+    </div>
+    <div class="field" id="field-text">
+      <label for="text">Text</label>
+      <input type="text" id="text" name="text" placeholder="e.g. Hello, world!">
+    </div>
+    <div class="field" id="field-url" style="display: none;">
+      <label for="url">URL</label>
+      <input type="url" id="url" name="url" placeholder="https://example.com">
+    </div>
+    <div id="field-vcard" style="display: none;">
+      <div class="form-row">
+        <div class="field">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" placeholder="Arslan Nasir">
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input type="text" id="phone" name="phone" placeholder="+923497988829">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" placeholder="arslannasir045@gmail.com">
+        </div>
+      </div>
+      <p class="help">Scans straight into the phone's address book as a vCard.</p>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="box_size">Box size (pixels per module)</label>
+        <input type="number" id="box_size" name="box_size" min="1" max="50" value="{{ box_size }}">
+      </div>
+      <div class="field">
+        <label for="border">Border (modules)</label>
+        <input type="number" id="border" name="border" min="0" max="20" value="{{ border }}">
+      </div>
+    </div>
+    <button class="btn" type="submit">Generate QR code</button>
+  </form>
+</div>
+
+<div class="card" id="preview-card" style="{{ '' if qr else 'display: none;' }}">
+  <h2>Live preview</h2>
+  <img id="qr-preview" alt="QR code preview"
+       {% if qr %}src="{{ url_for('qr_image', token=token) }}"{% endif %}
+       style="max-width: 100%; image-rendering: pixelated;">
+  <p class="help" id="qr-preview-info">{% if qr %}{{ qr.width }}&times;{{ qr.height }} px{% endif %}</p>
+</div>
+
+{% if qr %}
+<div class="card">
+  <h2>Your QR code</h2>
+  <p><img src="{{ url_for('qr_image', token=token) }}" alt="Generated QR code" style="max-width: 100%; image-rendering: pixelated;"></p>
+  <p class="help">Encoded: <span class="mono">{{ qr.data }}</span><br>
+  {{ qr.width }}&times;{{ qr.height }} px, box size {{ qr.box_size }}, border {{ qr.border }}.</p>
+  <div class="btn-row">
+    <a class="btn" href="{{ url_for('download', token=token) }}">Download PNG</a>
+    <button class="btn secondary" type="button" data-copy="{{ qr.data }}">Copy encoded text</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var kind = document.getElementById("kind");
+  var fieldText = document.getElementById("field-text");
+  var fieldUrl = document.getElementById("field-url");
+  var fieldVcard = document.getElementById("field-vcard");
+  var previewCard = document.getElementById("preview-card");
+  var previewImg = document.getElementById("qr-preview");
+  var previewInfo = document.getElementById("qr-preview-info");
+
+  function showFields() {
+    var v = kind.value;
+    fieldText.style.display = v === "text" ? "" : "none";
+    fieldUrl.style.display = v === "url" ? "" : "none";
+    fieldVcard.style.display = v === "vcard" ? "" : "none";
+  }
+
+  function livePreview() {
+    var params = new URLSearchParams({
+      kind: kind.value,
+      text: document.getElementById("text").value,
+      url: document.getElementById("url").value,
+      name: document.getElementById("name").value,
+      phone: document.getElementById("phone").value,
+      email: document.getElementById("email").value,
+      box_size: document.getElementById("box_size").value,
+      border: document.getElementById("border").value
+    });
+    fetch("{{ url_for('api_qr') }}?" + params.toString())
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) return;
+        previewImg.src = data.data_url;
+        previewInfo.textContent = data.width + " x " + data.height + " px";
+        previewCard.style.display = "";
+      });
+  }
+
+  var timer = null;
+  function debouncedPreview() {
+    clearTimeout(timer);
+    timer = setTimeout(livePreview, 400);
+  }
+
+  kind.addEventListener("change", function () { showFields(); debouncedPreview(); });
+  ["text", "url", "name", "phone", "email", "box_size", "border"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", debouncedPreview);
+  });
+  showFields();
+});
+</script>
+{% endblock %}
